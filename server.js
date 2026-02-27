@@ -7,118 +7,127 @@ import path from 'path';
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public'));
+app.use(express.static('public')); // serve frontend if you put index.html in /public
 
 const API_KEY = 'qasim-dev';
-const HISTORY_FILE = path.join('./', 'history.json');
+const HISTORY_FILE = path.join(process.cwd(), 'history.json');
 
-// Utilities
 function saveHistory(entry) {
-  let history = [];
-  if (fs.existsSync(HISTORY_FILE)) {
-    history = JSON.parse(fs.readFileSync(HISTORY_FILE));
-  }
+  let history = fs.existsSync(HISTORY_FILE) ? JSON.parse(fs.readFileSync(HISTORY_FILE)) : [];
   history.unshift(entry);
   fs.writeFileSync(HISTORY_FILE, JSON.stringify(history.slice(0, 50), null, 2));
 }
 
-async function fetchAPI(url, endpointName) {
+async function proxy(url, name, req, res) {
   try {
-    const res = await fetch(url);
-    const data = await res.json();
-    saveHistory({ endpoint: endpointName, query: url, timestamp: new Date().toISOString() });
-    return data;
+    const data = await (await fetch(url)).json();
+    saveHistory({ endpoint: name, query: req.originalUrl, timestamp: new Date().toISOString() });
+    res.json(data);
   } catch (err) {
-    return { error: `${endpointName} failed` };
+    res.status(500).json({ error: `${name} failed` });
   }
 }
 
-// Routes
-
+// ───────────────────────────────────────
 // YouTube
-app.get('/api/yts/searchAll', async (req, res) => {
-  const query = req.query.q || '';
-  const data = await fetchAPI(`https://api.qasimdev.dpdns.org/api/yts/searchAll?apiKey=\( {API_KEY}&query= \){query}`, 'YouTube Search All');
-  res.json(data);
-});
+// ───────────────────────────────────────
+app.get('/api/yts/searchAll', (req, res) => proxy(
+  `https://api.qasimdev.dpdns.org/api/yts/searchAll?apiKey=\( {API_KEY}&query= \){req.query.query || req.query.q || ''}`,
+  'YT searchAll', req, res
+));
 
-app.get('/api/yts/getVideo', async (req, res) => {
-  const id = req.query.id || '';
-  const data = await fetchAPI(`https://api.qasimdev.dpdns.org/api/yts/getVideo?apiKey=\( {API_KEY}&id= \){id}`, 'YouTube Get Video');
-  res.json(data);
-});
+app.get('/api/yts/searchVideos', (req, res) => proxy(
+  `https://api.qasimdev.dpdns.org/api/yts/searchVideos?apiKey=\( {API_KEY}&query= \){req.query.query || req.query.q || ''}`,
+  'YT searchVideos', req, res
+));
 
-app.get('/api/yts/searchPlaylists', async (req, res) => {
-  const query = req.query.q || '';
-  const data = await fetchAPI(`https://api.qasimdev.dpdns.org/api/yts/searchPlaylists?apiKey=\( {API_KEY}&query= \){query}`, 'YouTube Playlists');
-  res.json(data);
-});
+app.get('/api/yts/getVideo', (req, res) => proxy(
+  `https://api.qasimdev.dpdns.org/api/yts/getVideo?apiKey=\( {API_KEY}&id= \){req.query.id || ''}`,
+  'YT getVideo', req, res
+));
 
-// Spotify
-app.get('/api/spotify/search', async (req, res) => {
-  const query = req.query.q || '';
-  const data = await fetchAPI(`https://api.qasimdev.dpdns.org/api/spotify/search?q=\( {query}&apiKey= \){API_KEY}`, 'Spotify Search');
-  res.json(data);
-});
+app.get('/api/yts/getPlaylist', (req, res) => proxy(
+  `https://api.qasimdev.dpdns.org/api/yts/getPlaylist?apiKey=\( {API_KEY}&id= \){req.query.id || ''}`,
+  'YT getPlaylist', req, res
+));
 
-app.get('/api/spotify/trackInfo', async (req, res) => {
-  const url = req.query.url || '';
-  const data = await fetchAPI(`https://api.qasimdev.dpdns.org/api/spotify/trackInfo?url=\( {url}&apiKey= \){API_KEY}`, 'Spotify Track Info');
-  res.json(data);
-});
+app.get('/api/yts/channelVideos', (req, res) => proxy(
+  `https://api.qasimdev.dpdns.org/api/yts/channelVideos?apiKey=\( {API_KEY}&channel= \){req.query.channel || ''}`,
+  'YT channelVideos', req, res
+));
 
-app.get('/api/spotify/download', async (req, res) => {
-  const url = req.query.url || '';
-  const data = await fetchAPI(`https://api.qasimdev.dpdns.org/api/spotify/download?url=\( {url}&apiKey= \){API_KEY}`, 'Spotify Download');
-  res.json(data);
-});
+app.get('/api/youtube/video', (req, res) => proxy(
+  `https://api.qasimdev.dpdns.org/api/youtube/video?apiKey=\( {API_KEY}&query= \){req.query.query || ''}`,
+  'YouTube video', req, res
+));
 
+app.get('/api/youtube/play', (req, res) => proxy(
+  `https://api.qasimdev.dpdns.org/api/youtube/play?apiKey=\( {API_KEY}&query= \){req.query.query || ''}`,
+  'YouTube play', req, res
+));
+
+// ───────────────────────────────────────
+// SoundCloud
+// ───────────────────────────────────────
+app.get('/api/soundcloud/search', (req, res) => proxy(
+  `https://api.qasimdev.dpdns.org/api/soundcloud/search?q=\( {req.query.q || ''}&apiKey= \){API_KEY}`,
+  'SoundCloud search', req, res
+));
+
+app.get('/api/soundcloud/download', (req, res) => proxy(
+  `https://api.qasimdev.dpdns.org/api/soundcloud/download?url=\( {encodeURIComponent(req.query.url || '')}&apiKey= \){API_KEY}`,
+  'SoundCloud download', req, res
+));
+
+// ───────────────────────────────────────
+// Deezer
+// ───────────────────────────────────────
+app.get('/api/deezer/deezer', (req, res) => proxy(
+  `https://api.qasimdev.dpdns.org/api/deezer/deezer?apiKey=\( {API_KEY}&path= \){req.query.path || ''}&resource=\( {req.query.resource || ''}&id= \){req.query.id || ''}&album=\( {req.query.album || ''}&artist= \){req.query.artist || ''}&track=\( {req.query.track || ''}&playlist= \){req.query.playlist || ''}`,
+  'Deezer general', req, res
+));
+
+app.get('/api/deezer/track', (req, res) => proxy(
+  `https://api.qasimdev.dpdns.org/api/deezer/track?id=\( {req.query.id || ''}&apiKey= \){API_KEY}`,
+  'Deezer track', req, res
+));
+
+app.get('/api/deezer/search', (req, res) => proxy(
+  `https://api.qasimdev.dpdns.org/api/deezer/search?apiKey=\( {API_KEY}&track= \){req.query.track || ''}&artist=\( {req.query.artist || ''}&album= \){req.query.album || ''}&label=\( {req.query.label || ''}&dur_min= \){req.query.dur_min || ''}&dur_max=\( {req.query.dur_max || ''}&bpm_min= \){req.query.bpm_min || ''}&bpm_max=${req.query.bpm_max || ''}`,
+  'Deezer search', req, res
+));
+
+// ───────────────────────────────────────
 // MusicBrainz
-app.get('/api/musicbrainz/search', async (req, res) => {
-  const query = req.query.q || '';
-  const data = await fetchAPI(`https://api.qasimdev.dpdns.org/api/musicbrainz/search?query=\( {query}&apiKey= \){API_KEY}`, 'MusicBrainz Search');
-  res.json(data);
-});
+// ───────────────────────────────────────
+app.get('/api/musicbrainz/albums', (req, res) => proxy(
+  `https://api.qasimdev.dpdns.org/api/musicbrainz/albums?query=\( {req.query.query || req.query.q || ''}&apiKey= \){API_KEY}`,
+  'MB albums', req, res
+));
 
-app.get('/api/musicbrainz/artists', async (req, res) => {
-  const query = req.query.q || '';
-  const data = await fetchAPI(`https://api.qasimdev.dpdns.org/api/musicbrainz/artists?query=\( {query}&apiKey= \){API_KEY}`, 'MusicBrainz Artists');
-  res.json(data);
-});
+app.get('/api/musicbrainz/artist', (req, res) => proxy(
+  `https://api.qasimdev.dpdns.org/api/musicbrainz/artist?artist_id=\( {req.query.artist_id || ''}&apiKey= \){API_KEY}`,
+  'MB artist', req, res
+));
 
-app.get('/api/musicbrainz/albums', async (req, res) => {
-  const query = req.query.q || '';
-  const data = await fetchAPI(`https://api.qasimdev.dpdns.org/api/musicbrainz/albums?query=\( {query}&apiKey= \){API_KEY}`, 'MusicBrainz Albums');
-  res.json(data);
-});
+// ───────────────────────────────────────
+// Jamendo
+// ───────────────────────────────────────
+app.get('/api/jamendo/albumTracks', (req, res) => proxy(
+  `https://api.qasimdev.dpdns.org/api/jamendo/albumTracks?artist_name=\( {req.query.artist_name || ''}&apiKey= \){API_KEY}`,
+  'Jamendo albumTracks', req, res
+));
 
-app.get('/api/musicbrainz/tracks', async (req, res) => {
-  const query = req.query.q || '';
-  const data = await fetchAPI(`https://api.qasimdev.dpdns.org/api/musicbrainz/tracks?query=\( {query}&apiKey= \){API_KEY}`, 'MusicBrainz Tracks');
-  res.json(data);
-});
+// ───────────────────────────────────────
+// Loaderto Download
+// ───────────────────────────────────────
+app.get('/api/loaderto/download', (req, res) => proxy(
+  `https://api.qasimdev.dpdns.org/api/loaderto/download?apiKey=\( {API_KEY}&url= \){encodeURIComponent(req.query.url || '')}&format=${req.query.format || 'mp3'}`,
+  'Loaderto download', req, res
+));
 
-app.get('/api/musicbrainz/artist', async (req, res) => {
-  const artist_id = req.query.artist_id || '';
-  const data = await fetchAPI(`https://api.qasimdev.dpdns.org/api/musicbrainz/artist?artist_id=\( {artist_id}&apiKey= \){API_KEY}`, 'MusicBrainz Artist');
-  res.json(data);
-});
-
-// Loader Download
-app.get('/api/loaderto/download', async (req, res) => {
-  const { url, format } = req.query;
-  const data = await fetchAPI(`https://api.qasimdev.dpdns.org/api/loaderto/download?apiKey=\( {API_KEY}&url= \){url}&format=${format}`, 'Loader Download');
-  res.json(data);
-});
-
-// History
-app.get('/api/history', (req, res) => {
-  let history = [];
-  if (fs.existsSync(HISTORY_FILE)) {
-    history = JSON.parse(fs.readFileSync(HISTORY_FILE));
-  }
-  res.json(history);
-});
+// Health check
+app.get('/', (req, res) => res.send('StreamMe backend is running'));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
